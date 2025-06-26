@@ -1,0 +1,13 @@
+.{
+    .name = .zigonut,
+    .version = "0.0.0",
+    .fingerprint = 0xf5b19c3db09f3d1b, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.15.0-dev.777+6810ffa42",
+    .dependencies = .{
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
