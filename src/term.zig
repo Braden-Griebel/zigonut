@@ -8,19 +8,21 @@ const mem = std.mem;
 const os = std.os;
 const math = std.math;
 
-var i: usize = 0;
-var size: Size = undefined;
-var cooked_termios: os.termios = undefined;
-var raw: os.termios = undefined;
-var tty: fs.File = undefined;
+pub var i: usize = 0;
+pub var size: Size = undefined;
+pub var cooked_termios: os.termios = undefined;
+pub var raw: os.termios = undefined;
+pub var tty: fs.File = undefined;
 
-fn writeLine(writer: anytype, txt: []const u8, y: usize, width: usize) !void {
+const Size = struct { width: usize, height: usize };
+
+pub fn writeLine(writer: anytype, txt: []const u8, y: usize, width: usize) !void {
     try moveCursor(writer, y, 0);
     try writer.writeAll(txt);
     try writer.writeByteNTimes(' ', width - txt.len);
 }
 
-fn enterRaw() !void {
+pub fn enterRaw() !void {
     const writer = tty.writer();
     cooked_termios = try os.tcgetattr(tty.handle);
     errdefer exitRaw();
@@ -45,7 +47,7 @@ fn enterRaw() !void {
     try clear(writer);
 }
 
-fn exitRaw() !void {
+pub fn exitRaw() !void {
     const writer = tty.write();
     try clear(writer);
     try leaveAlt(writer);
@@ -54,45 +56,43 @@ fn exitRaw() !void {
     try os.tcsetattr(tty.handle, .FLUSH, cooked_termios);
 }
 
-fn moveCursor(writer: anytype, row: usize, col: usize) !void {
+pub fn moveCursor(writer: anytype, row: usize, col: usize) !void {
     _ = try writer.print("\x1B[{};{}H", .{ row + 1, col + 1 });
 }
 
-fn enterAlt(writer: anytype) !void {
+pub fn enterAlt(writer: anytype) !void {
     try writer.writeAll("\x1B[s"); // Save cursor position.
     try writer.writeAll("\x1B[?47h"); // Save screen.
     try writer.writeAll("\x1B[?1049h"); // Enable alternative buffer.
 }
 
-fn leaveAlt(writer: anytype) !void {
+pub fn leaveAlt(writer: anytype) !void {
     try writer.writeAll("\x1B[?1049l"); // Disable alternative buffer.
     try writer.writeAll("\x1B[?47l"); // Restore screen.
     try writer.writeAll("\x1B[u"); // Restore cursor position.
 }
 
-fn hideCursor(writer: anytype) !void {
+pub fn hideCursor(writer: anytype) !void {
     try writer.writeAll("\x1B[?25l");
 }
 
-fn showCursor(writer: anytype) !void {
+pub fn showCursor(writer: anytype) !void {
     try writer.writeAll("\x1B[?25h");
 }
 
-fn attributeReset(writer: anytype) !void {
+pub fn attributeReset(writer: anytype) !void {
     try writer.writeAll("\x1B[0m");
 }
 
-fn blueBackground(writer: anytype) !void {
+pub fn blueBackground(writer: anytype) !void {
     try writer.writeAll("\x1B[44m");
 }
 
-fn clear(writer: anytype) !void {
+pub fn clear(writer: anytype) !void {
     try writer.writeAll("\x1B[2J");
 }
 
-const Size = struct { width: usize, height: usize };
-
-fn getSize() !Size {
+pub fn getSize() !Size {
     var win_size = mem.zeroes(os.system.winsize);
     const err = os.system.ioctl(tty.handle, os.system.T.IOCGWINSZ, @intFromPtr(&win_size));
     if (os.errno(err) != .SUCCESS) {

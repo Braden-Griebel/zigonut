@@ -1,24 +1,51 @@
+// Standard Library Imports
 const std = @import("std");
+const fs = std.fs;
+const os = std.os;
+
+// Local Imports
 const zigonut = @import("zigonut");
+const term = zigonut.term;
+const donut = zigonut.donut;
+
+// Global Constant Definitions
+// The amount of time between each step (in ms)
+const delta_time = 200;
+// The minimum amount of padding on the top and bottom
+const vertical_padding = 3;
+// The minimum amount of padding on the sides
+const horizontal_padding = 3;
+
+// Global Variable Definitions
+// The time the previous frame was created, used for delta time
+var prev_time = std.time.milliTimestamp();
 
 pub fn main() !void {
-    std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
-    try zigonut.advancedPrint();
-}
+    // Get the tty
+    term.tty = try fs.cwd().openFile("/dev/tty", .{ .read = true, .write = true });
+    defer term.tty.close();
 
-test "simple test" {
-    var list = std.ArrayList(i32).init(std.testing.allocator);
-    defer list.deinit(); // Try commenting this out and see if zig detects the memory leak!
-    try list.append(42);
-    try std.testing.expectEqual(@as(i32, 42), list.pop());
-}
+    // Enter raw mode
+    try term.enterRaw();
+    defer term.exitRaw() catch {};
 
-test "fuzz example" {
-    const Context = struct {
-        fn testOne(context: @This(), input: []const u8) anyerror!void {
-            _ = context;
-            try std.testing.expect(!std.mem.eql(u8, "canyoufindme", input));
-        }
-    };
-    try std.testing.fuzz(Context{}, Context.testOne, .{});
+    // Get the size of the terminal
+    term.size = try term.getSize();
+
+    // Based on the initial size, calculate the size of the
+    // window for drawing the torus
+
+    // Handle the terminal being resized (SIGWINCH signal)
+    os.sigaction(os.SIG.WINCH, &os.Sigaction{
+        .handler = .{ .handler = term.handleSigWinch },
+        .mask = os.empty_sigset,
+        .flags = 0,
+    }, null);
+
+    // Create the torus
+    // get an allocator for the torus
+    var gpa = std.head.GeneralPurposeALlocator(.{}){};
+    const allocator = gpa.allocator();
+    // Initialize the torus with this allocator
+    var torus = donut.Torus.init(allocator);
 }
