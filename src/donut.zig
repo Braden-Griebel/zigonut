@@ -2,11 +2,152 @@
 const std = @import("std");
 const math = std.math;
 
-//! A single point
+/// A single point
 pub const Point = struct { x: f64, y: f64, z: f64 };
 
-//! A struct representing a Torus
+/// A struct representing a Torus
 pub const Torus = struct {
+    /// Array of points making up the torus
     points: std.MultiArrayList(Point),
+    /// Allocator used for allocating the points array, and the
+    /// window array recording the z positions for drawing
     allocator: std.mem.Allocator,
+    /// The distance from the axis of revolution
+    major_radius: f64,
+    /// The radius of the circle which is revolved to
+    /// create the torus
+    minor_radius: f64,
+    /// The number of cells along one side of the window
+    /// i.e. the number of rows and columns (must be square)
+    window_cells: usize,
+    /// The size of the window in the same units as the radii
+    window_size: f64,
+    /// The closes z distance within every cell of the window, represented
+    /// as a linear array of length window_cells*window_cells
+    window: []f64,
+
+    /// Initialize the Torus. This function does not
+    /// create the point cloud for the torus, for that
+    /// see the createPoints function.
+    pub fn init(allocator: std.mem.Allocator) Torus {
+        return .{
+            .points = std.MultiArrayList(Point).init(allocator),
+            .allocator = allocator,
+            .major_radius = 0,
+            .minor_radius = 0,
+        };
+    }
+
+    /// Deinitialize the torus, frees the memory
+    /// of the points array and the window holding the
+    /// z coordinates of the cells
+    pub fn deinit(self: *Torus) void {
+        // Free the window array
+        self.*.allocator.free(self.*.window);
+        // Free the points array
+        self.*.points.deinit();
+        // Invalidate the pointer
+        self.* = undefined;
+    }
+
+    /// Set the number of rows of the window. Note that
+    /// since the window must be square this also sets
+    /// the number of columns.
+    pub fn setWindowCells(self: *Torus, window_cells: usize) !void {
+        self.*.window_row = window_cells;
+        self.*.allocator.free(self.*.window);
+        self.*.window = try self.*.allocator.alloc(f64, window_cells * window_cells);
+    }
+
+    /// Uses the equation of a torus to create the set of points representing the donut
+    pub fn createPoints(self: *Torus, major_radius: f64, major_steps: usize, minor_radius: f64, minor_steps: usize) !void {
+        // Find the change in theta required for the number of steps
+        const d_theta = 2 * math.pi / major_steps;
+        // Find the change in phi required for the number of steps
+        const d_phi = 2 * math.pi / minor_steps;
+        // Set the major and minor radii
+        self.*.major_radius = major_radius;
+        self.*.minor_radius = minor_radius;
+        // Calculate the points based on the theta phi parameterization
+        for (0..major_steps, 0..minor_steps) |theta_steps, phi_steps| {
+            const theta = theta_steps * d_theta;
+            const phi = phi_steps * d_phi;
+            try self.points.append(self.*.allocator, .{
+                .x = (major_radius + minor_radius * math.sin(theta)) * math.cos(phi),
+                .y = (major_radius + minor_radius * math.sin(theta)) * math.sin(phi),
+                .z = minor_radius * math.cos(theta),
+            });
+        }
+    }
+
+    /// Rotate the torus `angle` radians in the X-Y plane
+    fn rotateXY(self: *Torus, angle: f64) void {
+        // Calculate the cos and sin of the angle
+        // doing this outside the loop since the
+        // calculation is expensive
+        const cos_angle: f64 = math.cos(angle);
+        const sin_angle: f64 = math.sin(angle);
+        // Use the rotation matrix to rotate the points
+        for (self.*.points(.x), self.*.points(.y)) |*x, *y| {
+            x.* = x.* * cos_angle - y.* * sin_angle;
+            y.* = x.* * sin_angle + y.* * cos_angle;
+        }
+    }
+
+    /// Rotate the torus `angle` radians in the Y-Z plane
+    fn rotateYZ(self: *Torus, angle: f64) void {
+        // Calculate the cos and sin of the angle
+        // doing this outside the loop since the
+        // calculation is expensive
+        const cos_angle: f64 = math.cos(angle);
+        const sin_angle: f64 = math.sin(angle);
+        // Use the rotation matrix to rotate the points
+        for (self.*.points(.y), self.*.points(.z)) |*y, *z| {
+            y.* = y.* * cos_angle - z.* * sin_angle;
+            z.* = y.* * sin_angle + z.* * cos_angle;
+        }
+    }
+
+    /// Rotate the Torus theta in the X-Y plane, and phi in
+    /// the Y-Z plane
+    pub fn rotate(self: *Torus, theta: f64, phi: f64) void {
+        // Rotate through the two degrees of freedom
+        self.rotateXY(theta);
+        self.rotateYZ(phi);
+    }
+
+    /// Calculate the Z value in each cell of the window
+    pub fn calculateCellZ(self: *Torus) void {
+        // Based on the window size, find how much
+        // x and y go in each cell
+        const cell_size = self.*.window_size / @as(f64, self.*.window_cells);
+        // Translate the points by half the window size to center them
+        const translate_x = self.*.window_size / 2;
+        // Same, skipping divide calculation
+        // (even though it is just a bit shift theoretically)
+        const translate_y = translate_x;
+        // "Zero" out the cell array
+        for (self.*.window) |*cell| {
+            cell.* = -math.inf(f64);
+        }
+        // Step through the points, and figure out the minimum distance
+        // away in each cell
+        for (self.*.points(.x), self.*.points(.y), self.*.points(.z)) |x, y, z| {
+            // Translate x and y
+            x += translate_x;
+            y += translate_y;
+            if ((x < 0) | (y < 0)) {
+                @panic("Bad x-y coordinate (x or y is less than 0)");
+            }
+            // Determine which cell the point is in
+            const cell_x: usize = math.floor(usize)(x / cell_size);
+            const cell_y: usize = math.floot(usize)(y / cell_size);
+            // Use the window as row-major
+            const position: usize = cell_x * self.*.window_cells + cell_y;
+            if (position >= (self.*.window_cells * self.*.window_cells)) {
+                @panic("Bad index (exceeds window size)");
+            }
+            self.*.window[position] = @max(self.*.window, z);
+        }
+    }
 };
