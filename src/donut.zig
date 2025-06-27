@@ -22,9 +22,11 @@ pub const Torus = struct {
     window_cells: usize,
     /// The size of the window in the same units as the radii
     window_size: f64,
-    /// The closes z distance within every cell of the window, represented
+    /// The closest z distance within every cell of the window, represented
     /// as a linear array of length window_cells*window_cells
-    window: []f64,
+    window_z: []f64,
+    /// The character representing the distance the in window
+    window_chars: []u8,
 
     /// Initialize the Torus. This function does not
     /// create the point cloud for the torus, for that
@@ -35,6 +37,10 @@ pub const Torus = struct {
             .allocator = allocator,
             .major_radius = 0,
             .minor_radius = 0,
+            .window_cells = 0,
+            .window_size = 0,
+            .window = undefined,
+            .window_chars = undefined,
         };
     }
 
@@ -43,20 +49,33 @@ pub const Torus = struct {
     /// z coordinates of the cells
     pub fn deinit(self: *Torus) void {
         // Free the window array
-        self.*.allocator.free(self.*.window);
+        self.*.allocator.free(self.*.window_z);
         // Free the points array
         self.*.points.deinit();
+        // Free the window array
+        self.*.allocator.free(self.*.window_z);
+        // Free the window character array
+        self.*.allocator.free(self.*.window_chars);
         // Invalidate the pointer
         self.* = undefined;
+    }
+
+    /// Set the size of the window, this is in the same units
+    /// as the Major and Minor axes (which are arbitrary units,
+    /// the relationship between the window size and the radii
+    /// are what determine what is drawn).
+    pub fn setWindowSize(self: *Torus, window_size: f64) void {
+        self.*.window_size = window_size;
     }
 
     /// Set the number of rows of the window. Note that
     /// since the window must be square this also sets
     /// the number of columns.
     pub fn setWindowCells(self: *Torus, window_cells: usize) !void {
-        self.*.window_row = window_cells;
-        self.*.allocator.free(self.*.window);
-        self.*.window = try self.*.allocator.alloc(f64, window_cells * window_cells);
+        // Set the number of
+        self.*.window_cells = window_cells;
+        self.*.allocator.free(self.*.window_z);
+        self.*.window_z = try self.*.allocator.alloc(f64, window_cells * window_cells);
     }
 
     /// Uses the equation of a torus to create the set of points representing the donut
@@ -127,7 +146,7 @@ pub const Torus = struct {
         // (even though it is just a bit shift theoretically)
         const translate_y = translate_x;
         // "Zero" out the cell array
-        for (self.*.window) |*cell| {
+        for (self.*.window_z) |*cell| {
             cell.* = -math.inf(f64);
         }
         // Step through the points, and figure out the minimum distance
@@ -147,7 +166,34 @@ pub const Torus = struct {
             if (position >= (self.*.window_cells * self.*.window_cells)) {
                 @panic("Bad index (exceeds window size)");
             }
-            self.*.window[position] = @max(self.*.window, z);
+            self.*.window_z[position] = @max(self.*.window_z, z);
         }
+    }
+
+    /// Use the z-values calculated in the
+    pub fn findChars(self: *Torus) void {
+        // Create an array of characters to use for drawing
+        const chars = [_]u8{
+            '.', ';', '"', '?', '[', '1', 'w', '&', 'Q', '@',
+        };
+        // Discretize the z-dimension
+        // Find the total range that z can take
+        const z_range = self.*.major_radius * 2 + self.*.minor_radius * 4;
+        const z_range_half = z_range / 2;
+        // Find the length of the steps based on the range and the number
+        // of characters being used
+        const z_step: f64 = z_range / chars.len;
+        // Iterate through the correct row of the window, assigning
+        // a character based on the z value
+        for (self.*.window_z, 0..) |cell_z, idx| {
+            self.*.window_chars[idx] = chars[math.floor(usize)((cell_z + z_range_half) / z_step)];
+        }
+    }
+
+    /// Get a particular line from the window_chars array
+    pub fn getLine(self: *Torus, line: usize) []u8 {
+        const line_start = line * self.*.window_cells;
+        const line_end = (line + 1) * self.*.window_cells;
+        return self.*.window_chars[line_start..line_end];
     }
 };
