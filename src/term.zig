@@ -22,6 +22,13 @@ pub fn writeLine(writer: anytype, txt: []const u8, y: usize, width: usize) !void
     try writer.writeByteNTimes(' ', width - txt.len);
 }
 
+pub fn writeLinePadded(writer: anytype, txt: []const u8, y: usize, left_pad: usize, right_pad: usize) !void {
+    try moveCursor(writer, y, 0);
+    try writer.writeByteNTimes(' ', left_pad);
+    try writer.writeAll(txt);
+    try writer.writeByteNTime(' ', right_pad);
+}
+
 pub fn enterRaw() !void {
     const writer = tty.writer();
     cooked_termios = try os.tcgetattr(tty.handle);

@@ -72,10 +72,18 @@ pub const Torus = struct {
     /// since the window must be square this also sets
     /// the number of columns.
     pub fn setWindowCells(self: *Torus, window_cells: usize) !void {
-        // Set the number of
+        // Chec if an update is needed
+        if (self.*.window_cells == window_cells) {
+            return void; // Already correct size, no change needed
+        }
+        // Set the number of cells
         self.*.window_cells = window_cells;
+        // Update the window_z slice to the correct size
         self.*.allocator.free(self.*.window_z);
-        self.*.window_z = try self.*.allocator.alloc(f64, window_cells * window_cells);
+        self.*.window_z = try self.*.allocator.alloc(f64, self.*.window_cells * self.*.window_cells);
+        // Update the window_char slice to the correct size
+        self.*.allocator.free(self.*.window_chars);
+        self.*.window_chars = try self.*.allocator.alloc(u8, self.*.window_cells * self.*.window_cells);
     }
 
     /// Uses the equation of a torus to create the set of points representing the donut
@@ -184,9 +192,13 @@ pub const Torus = struct {
         // of characters being used
         const z_step: f64 = z_range / chars.len;
         // Iterate through the correct row of the window, assigning
-        // a character based on the z value
+        // a character based on the z value, with spaces for -inf
         for (self.*.window_z, 0..) |cell_z, idx| {
-            self.*.window_chars[idx] = chars[math.floor(usize)((cell_z + z_range_half) / z_step)];
+            if (cell_z == -math.inf(f64)) {
+                self.*.window_chars[idx] = ' ';
+            } else {
+                self.*.window_chars[idx] = chars[math.floor(usize)((cell_z + z_range_half) / z_step)];
+            }
         }
     }
 
