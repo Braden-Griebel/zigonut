@@ -13,18 +13,18 @@ const donut = zigonut.donut;
 
 // Global Constant Definitions
 // The amount of time between each step (in ms)
-const delta_time = 50.0;
+const delta_time = 100.0;
 // The minimum amount of padding on the top and bottom
-const vertical_padding = 3;
+const vertical_padding = 1;
 // The minimum amount of padding on the sides
-const horizontal_padding = 3;
+const horizontal_padding = 1;
 // Constants defining the Torus
-const torus_major_radius = 10.0;
-const torus_minor_radius = 3.0;
+const torus_major_radius = 19.0;
+const torus_minor_radius = 5.0;
 const torus_window_size = 50.0;
-const torus_window_cells = 30;
-const torus_major_steps = 30;
-const torus_minor_steps = 10;
+const torus_window_cells = 35;
+const torus_major_steps = 50;
+const torus_minor_steps = 20;
 const torus_xy_angle_step = (2 * math.pi) / 137.0;
 const torus_yz_angle_step = (2 * math.pi) / 195.0;
 const torus_xz_angle_step = (2 * math.pi) / 47.0;
