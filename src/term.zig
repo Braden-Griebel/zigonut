@@ -6,15 +6,15 @@ const fs = std.fs;
 const io = std.io;
 const mem = std.mem;
 const os = std.os;
+const posix = std.posix;
 const math = std.math;
 
 pub var i: usize = 0;
 pub var size: Size = undefined;
-pub var cooked_termios: os.termios = undefined;
-pub var raw: os.termios = undefined;
+pub var cooked_termios: posix.termios = undefined;
+pub var raw: posix.termios = undefined;
 pub var tty: fs.File = undefined;
-
-const Size = struct { width: usize, height: usize };
+pub const Size = struct { width: usize, height: usize };
 
 pub fn writeLine(writer: anytype, txt: []const u8, y: usize, width: usize) !void {
     try moveCursor(writer, y, 0);
@@ -26,28 +26,39 @@ pub fn writeLinePadded(writer: anytype, txt: []const u8, y: usize, left_pad: usi
     try moveCursor(writer, y, 0);
     try writer.writeByteNTimes(' ', left_pad);
     try writer.writeAll(txt);
-    try writer.writeByteNTime(' ', right_pad);
+    try writer.writeByteNTimes(' ', right_pad);
 }
 
 pub fn enterRaw() !void {
     const writer = tty.writer();
-    cooked_termios = try os.tcgetattr(tty.handle);
-    errdefer exitRaw();
+
+    cooked_termios = try posix.tcgetattr(tty.handle);
+    errdefer exitRaw() catch {};
 
     raw = cooked_termios;
-    raw.lflag &= ~@as(
-        os.system.tcflag_t,
-        os.system.ECHO | os.system.ICANON | os.system.ISIG | os.system.IEXTEN,
-    );
-    raw.iflag &= ~@as(
-        os.system.tcflag_t,
-        os.system.IXON | os.system.ICRNL | os.system.BRKINT | os.system.INPCK | os.system.ISTRIP,
-    );
-    raw.oflag &= ~@as(os.system.tcflag_t, os.system.OPOST);
-    raw.cflag |= os.system.CS8;
-    raw.cc[os.system.V.TIME] = 0;
-    raw.cc[os.system.V.MIN] = 1;
-    try os.tcsetattr(tty.handle, .FLUSH, raw);
+    raw.lflag.ECHO = false;
+    raw.lflag.ICANON = false;
+    raw.lflag.ISIG = false;
+    raw.lflag.IEXTEN = false;
+    // raw.lflag &= ~@as(
+    //     posix.tcflag_t,
+    //     posix.ECHO | posix.ICANON | posix.ISIG | posix.IEXTEN,
+    // );
+    raw.iflag.IXON = false;
+    raw.iflag.ICRNL = false;
+    raw.iflag.BRKINT = false;
+    raw.iflag.INPCK = false;
+    raw.iflag.ISTRIP = false;
+    // raw.iflag &= ~@as(
+    //     posix.tcflag_t,
+    //     posix.IXON | posix.ICRNL | posix.BRKINT | posix.INPCK | posix.ISTRIP,
+    // );
+    raw.oflag.OPOST = false;
+    // raw.oflag &= ~@as(posix.tcflag_t, posix.OPOST);
+    // raw.cflag |= posix.CS8;
+    raw.cc[@intFromEnum(posix.V.TIME)] = 0;
+    raw.cc[@intFromEnum(posix.V.MIN)] = 0;
+    try posix.tcsetattr(tty.handle, .FLUSH, raw);
 
     try hideCursor(writer);
     try enterAlt(writer);
@@ -55,12 +66,12 @@ pub fn enterRaw() !void {
 }
 
 pub fn exitRaw() !void {
-    const writer = tty.write();
+    const writer = tty.writer();
     try clear(writer);
     try leaveAlt(writer);
     try showCursor(writer);
     try attributeReset(writer);
-    try os.tcsetattr(tty.handle, .FLUSH, cooked_termios);
+    try posix.tcsetattr(tty.handle, .FLUSH, cooked_termios);
 }
 
 pub fn moveCursor(writer: anytype, row: usize, col: usize) !void {
@@ -100,13 +111,13 @@ pub fn clear(writer: anytype) !void {
 }
 
 pub fn getSize() !Size {
-    var win_size = mem.zeroes(os.system.winsize);
-    const err = os.system.ioctl(tty.handle, os.system.T.IOCGWINSZ, @intFromPtr(&win_size));
-    if (os.errno(err) != .SUCCESS) {
-        return os.unexpectedErrno(@enumFromInt(os.system.E));
+    var win_size = mem.zeroes(posix.winsize);
+    const err = posix.system.ioctl(tty.handle, posix.system.T.IOCGWINSZ, @intFromPtr(&win_size));
+    if (posix.errno(err) != .SUCCESS) {
+        return posix.unexpectedErrno(@enumFromInt(err));
     }
     return Size{
-        .height = win_size.ws_row,
-        .width = win_size.ws_col,
+        .height = win_size.row,
+        .width = win_size.col,
     };
 }
