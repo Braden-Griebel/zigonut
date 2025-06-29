@@ -17,11 +17,15 @@ pub const Torus = struct {
     /// The radius of the circle which is revolved to
     /// create the torus
     minor_radius: f64,
-    /// The number of cells along one side of the window
-    /// i.e. the number of rows and columns (must be square)
-    window_cells: usize,
-    /// The size of the window in the same units as the radii
-    window_size: f64,
+    /// The number of horizontal cells of the
+    /// window, i.e. number of columns
+    window_cells_horizontal: usize,
+    /// The number of vertical cells of the window
+    window_cells_vertical: usize,
+    /// The horizontal size of the window in the same units as the radii
+    window_size_horizontal: f64,
+    /// The vertical size of the window in the same units as the radii
+    window_size_vertical: f64,
     /// The closest z distance within every cell of the window, represented
     /// as a linear array of length window_cells*window_cells
     window_z: []f64,
@@ -37,8 +41,10 @@ pub const Torus = struct {
             .allocator = allocator,
             .major_radius = 0,
             .minor_radius = 0,
-            .window_cells = 0,
-            .window_size = 0,
+            .window_cells_horizontal = 0,
+            .window_cells_vertical = 0,
+            .window_size_horizontal = 0,
+            .window_size_vertical = 0,
             .window_z = try allocator.alloc(f64, 0),
             .window_chars = try allocator.alloc(u8, 0),
         };
@@ -62,26 +68,28 @@ pub const Torus = struct {
     /// as the Major and Minor axes (which are arbitrary units,
     /// the relationship between the window size and the radii
     /// are what determine what is drawn).
-    pub fn setWindowSize(self: *Torus, window_size: f64) void {
-        self.*.window_size = window_size;
+    pub fn setWindowSize(self: *Torus, horizontal: f64, vertical: f64) void {
+        self.window_size_horizontal = horizontal;
+        self.window_size_vertical = vertical;
     }
 
     /// Set the number of rows of the window. Note that
     /// since the window must be square this also sets
     /// the number of columns.
-    pub fn setWindowCells(self: *Torus, window_cells: usize) !void {
+    pub fn setWindowCells(self: *Torus, horizontal: usize, vertical: usize) !void {
         // Check if an update is needed
-        if (self.window_cells == window_cells) {
+        if ((self.window_cells_horizontal == horizontal) and (self.window_cells_vertical == vertical)) {
             return; // Already correct size, no change needed
         }
         // Set the number of cells
-        self.window_cells = window_cells;
+        self.window_cells_horizontal = horizontal;
+        self.window_cells_vertical = vertical;
         // Update the window_z slice to the correct size
         self.allocator.free(self.window_z);
-        self.window_z = try self.allocator.alloc(f64, self.window_cells * self.window_cells);
+        self.window_z = try self.allocator.alloc(f64, self.window_cells_horizontal * self.window_cells_vertical);
         // Update the window_char slice to the correct size
         self.allocator.free(self.window_chars);
-        self.window_chars = try self.allocator.alloc(u8, self.window_cells * self.window_cells);
+        self.window_chars = try self.allocator.alloc(u8, self.window_cells_horizontal * self.window_cells_vertical);
     }
 
     /// Uses the equation of a torus to create the set of points representing the donut
@@ -107,8 +115,40 @@ pub const Torus = struct {
         }
     }
 
-    /// Rotate the torus `angle` radians in the X-Y plane
-    fn rotateXY(self: *Torus, angle: f64) void {
+    /// Rotate the torus `angle` radians about the x-axis
+    fn rotateAboutX(self: *Torus, angle: f64) void {
+        // Calculate the cos and sin of the angle
+        // doing this outside the loop since the
+        // calculation is expensive
+        const cos_angle: f64 = math.cos(angle);
+        const sin_angle: f64 = math.sin(angle);
+        // Use the rotation matrix to rotate the points
+        for (self.points.items(.y), self.points.items(.z)) |*y, *z| {
+            const y_new = y.* * cos_angle - z.* * sin_angle;
+            const z_new = y.* * sin_angle + z.* * cos_angle;
+            z.* = z_new;
+            y.* = y_new;
+        }
+    }
+
+    // Rotate the torus `angle` radians about the y-axis
+    fn rotateAboutY(self: *Torus, angle: f64) void {
+        // Calculate the cos and sin of the angle
+        // doing this outside the loop since the
+        // calculation is expensive
+        const cos_angle: f64 = math.cos(angle);
+        const sin_angle: f64 = math.sin(angle);
+        // Use the rotation matrix to rotate the points
+        for (self.points.items(.x), self.points.items(.z)) |*x, *z| {
+            const z_new = z.* * cos_angle - x.* * sin_angle;
+            const x_new = z.* * sin_angle + x.* * cos_angle;
+            z.* = z_new;
+            x.* = x_new;
+        }
+    }
+
+    /// Rotate the torus `angle` radians about the z-axis
+    fn rotateAboutZ(self: *Torus, angle: f64) void {
         // Calculate the cos and sin of the angle
         // doing this outside the loop since the
         // calculation is expensive
@@ -123,119 +163,105 @@ pub const Torus = struct {
         }
     }
 
-    /// Rotate the torus `angle` radians in the Y-Z plane
-    fn rotateYZ(self: *Torus, angle: f64) void {
-        // Calculate the cos and sin of the angle
-        // doing this outside the loop since the
-        // calculation is expensive
-
-        // Using the negative  of the angle so that
-        // a positive angle represents rotating "forward"
-        const cos_angle: f64 = math.cos(-angle);
-        const sin_angle: f64 = math.sin(-angle);
-        // Use the rotation matrix to rotate the points
-        for (self.*.points.items(.y), self.*.points.items(.z)) |*y, *z| {
-            const z_new = z.* * cos_angle - y.* * sin_angle;
-            const y_new = z.* * sin_angle + y.* * cos_angle;
-            z.* = z_new;
-            y.* = y_new;
-        }
-    }
-
-    // Rotate the torus `angle` radians in the X-Z plane
-    fn rotateXZ(self: *Torus, angle: f64) void {
-        // Calculate the cos and sin of the angle
-        // doing this outside the loop since the
-        // calculation is expensive
-
-        // Using the negative  of the angle so that
-        // a positive angle represents rotating "forward"
-        const cos_angle: f64 = math.cos(-angle);
-        const sin_angle: f64 = math.sin(-angle);
-        // Use the rotation matrix to rotate the points
-        for (self.*.points.items(.x), self.*.points.items(.z)) |*x, *z| {
-            const z_new = z.* * cos_angle - x.* * sin_angle;
-            const x_new = z.* * sin_angle + x.* * cos_angle;
-            z.* = z_new;
-            x.* = x_new;
-        }
-    }
-
-    /// Rotate the Torus in the x-y and y-z planes
-    pub fn rotate(self: *Torus, xy_rot: f64, yz_rot: f64, xz_rot: f64) void {
-        // Rotate through the two degrees of freedom
-        self.rotateXY(xy_rot);
-        self.rotateYZ(yz_rot);
-        self.rotateXZ(xz_rot);
+    /// Rotate the Torus about the three different axis
+    pub fn rotate(self: *Torus, x_axis_rot: f64, y_axis_rot: f64, z_axis_rot: f64) void {
+        // Rotate through the three degrees of freedom
+        self.rotateAboutX(x_axis_rot);
+        self.rotateAboutY(y_axis_rot);
+        self.rotateAboutZ(z_axis_rot);
     }
 
     /// Calculate the Z value in each cell of the window
     pub fn calculateCellZ(self: *Torus) void {
         // Based on the window size, find how much
         // x and y go in each cell
-        const cell_size = self.*.window_size / @as(f64, @floatFromInt(self.*.window_cells));
-        // Translate the points by half the window size to center them
-        const translate_x = self.*.window_size / 2;
-        // Same, skipping divide calculation
-        // (even though it is just a bit shift theoretically)
-        const translate_y = translate_x;
-        // "Zero" out the cell array
-        for (self.*.window_z) |*cell| {
-            cell.* = -math.inf(f64);
-        }
+        const cell_size_horizontal = self.window_size_horizontal / @as(f64, @floatFromInt(self.window_cells_horizontal));
+        const cell_size_vertical = self.window_size_vertical / @as(f64, @floatFromInt(self.window_cells_vertical));
+        // Moving the origin to the center of the window
+        // Translate the points by half the window size horizontally
+        const translate_x = self.window_size_horizontal / 2.0;
+        // Translate the points by hald the window size vertically
+        const translate_y = self.window_size_vertical / 2.0;
+        // Zero out the z-array
+        @memset(self.window_z, -math.inf(f64));
         // Step through the points, and figure out the minimum distance
         // away in each cell
-        for (self.*.points.items(.x), self.*.points.items(.y), self.*.points.items(.z)) |x, y, z| {
+        for (self.points.items(.x), self.points.items(.y), self.points.items(.z)) |x, y, z| {
             // Translate x and y
             const new_x = x + translate_x;
-            const new_y = y + translate_y;
-            if ((new_x < 0) or (new_y < 0)) {
-                @panic("Bad x-y coordinate (x or y is less than 0)");
+            const new_y = -y + translate_y; // y is flipped, since the window is from top to bottom
+            // If either x or y are still less than zero,
+            // do not try to render this point
+            if ((new_x < 0.0) or (new_y < 0.0)) {
+                continue;
             }
-            // Determine which cell the point is in
-            const cell_x: usize = @intFromFloat(math.floor(new_x / cell_size));
-            const cell_y: usize = @intFromFloat(math.floor(new_y / cell_size));
+            // Determine which cell the point should be in
+            const cell_x: usize = @intFromFloat(math.floor(new_x / cell_size_horizontal));
+            const cell_y: usize = @intFromFloat(math.floor(new_y / cell_size_vertical));
+            // If the cell for either is too large, do not try to render
+            if ((cell_x >= self.window_cells_horizontal) or (cell_y >= self.window_cells_vertical)) {
+                continue;
+            }
             // Use the window as row-major
-            const position: usize = cell_x * self.*.window_cells + cell_y;
-            if (position >= (self.*.window_cells * self.*.window_cells)) {
-                @panic("Bad index (exceeds window size)");
+            const position: usize = cell_y * self.window_cells_horizontal + cell_x;
+            // If the position is too large don't render the point
+            if (position >= self.window_z.len) {
+                continue; // This should never actually happen
             }
-            self.*.window_z[position] = @max(self.*.window_z[position], z);
+            // Set the value (this should be safe with the above checks)
+            self.window_z[position] = @max(self.window_z[position], z);
         }
     }
 
-    /// Use the z-values calculated in the
-    pub fn findChars(self: *Torus) void {
+    /// Use the z-values calculated in the calculateCellZ function
+    /// to determine the character that should be in each cell
+    pub fn calculateCellChars(self: *Torus) void {
         // Create an array of characters to use for drawing
+        // These should get brighter as they go farther forward
         const chars = [_]u8{
-            '.', ';', '"', '?', '[', '1', 'w', '&', 'Q', '@',
+            '.', '-', '"', '|', '(', '1', 'W', '&', 'Q', '@',
         };
         // Discretize the z-dimension
         // Find the total range that z can take
-        const z_range = self.*.major_radius * 2 + self.*.minor_radius * 4;
+        const z_range = self.major_radius * 2 + self.minor_radius * 2;
         const z_range_half = z_range / 2;
         // Find the length of the steps based on the range and the number
         // of characters being used
         const z_step: f64 = z_range / chars.len;
         // Iterate through the correct row of the window, assigning
         // a character based on the z value, with spaces for -inf
-        for (self.*.window_z, 0..) |cell_z, idx| {
+        for (self.window_z, 0..) |cell_z, idx| {
             if (cell_z == -math.inf(f64)) {
-                self.*.window_chars[idx] = ' ';
+                self.window_chars[idx] = ' ';
             } else {
-                self.*.window_chars[idx] = chars[@intFromFloat(math.floor((cell_z + z_range_half) / z_step))];
+                // Translate the z so that the range is all positive
+                const translated_z = cell_z + z_range_half;
+                // Make sure no translated z is negative
+                if (translated_z < 0.0) {
+                    continue;
+                }
+                // Determine the character position based on the step
+                const char_pos: usize = @intFromFloat(math.floor((cell_z + z_range_half) / z_step));
+                // If the character position is too great, don't render it
+                if (char_pos >= chars.len) {
+                    continue;
+                }
+                // Actually set the calculated character
+                self.window_chars[idx] = chars[char_pos];
             }
         }
     }
 
     /// Get a particular line from the window_chars array
     pub fn getLine(self: *Torus, line: usize) []u8 {
-        const line_start = line * self.*.window_cells;
-        const line_end = (line + 1) * self.*.window_cells;
-        return self.*.window_chars[line_start..line_end];
+        const line_start = line * self.window_cells_horizontal;
+        const line_end = (line + 1) * self.window_cells_horizontal;
+        return self.window_chars[line_start..line_end];
     }
 };
 
+// Helper functions (Mostly to help with testing)
+/// Check that two points are equal, within tolerance
 fn checkPointEq(point1: Point, point2: Point, tolerance: f64) bool {
     if ((point1.x - point2.x < tolerance) and (point1.y - point2.y < tolerance) and (point1.z - point2.z < tolerance)) {
         return true;
@@ -243,6 +269,9 @@ fn checkPointEq(point1: Point, point2: Point, tolerance: f64) bool {
     return false;
 }
 
+/// Check that two MultiArrayLists of points contain points that are equal (within tolerance)
+/// Checks this equality by determining that both sets of points are subsets of each other
+/// which is equivalent to equality without considering order
 fn checkPointsEqNoOrder(points1: std.MultiArrayList(Point), points2: std.MultiArrayList(Point), tolerance: f64) bool {
     if (points1.len != points2.len) {
         return false;
@@ -339,7 +368,7 @@ test "Generating four point Torus" {
     try testing.expect(checkPointsEqNoOrder(torus.points, expected_points, 1e-7));
 }
 
-test "Rotating points in x-y" {
+test "Rotating points about z" {
     const test_alloc = testing.allocator;
     var torus: Torus = try Torus.init(test_alloc);
     defer torus.deinit();
@@ -347,7 +376,7 @@ test "Rotating points in x-y" {
     try torus.createPoints(10, 4, 1, 1);
     try testing.expectEqual(4, torus.points.len);
     // Rotate the four points
-    torus.rotateXY(math.pi / 2.0); // Rotating by pi/2 should end up with same coords
+    torus.rotateAboutZ(math.pi / 2.0); // Rotating by pi/2 should end up with same coords
     // Create an expected points list
     var expected_points = std.MultiArrayList(Point).empty;
     defer expected_points.deinit(test_alloc);
@@ -369,11 +398,11 @@ test "Rotating points in x-y" {
     try expected_points.append(test_alloc, .{ .x = -7.07106781, .y = -7.07106781, .z = 1.0 });
     try expected_points.append(test_alloc, .{ .x = 7.07106781, .y = -7.07106781, .z = 1.0 });
     // Rotate the array
-    torus.rotateXY(math.pi / 4.0);
+    torus.rotateAboutZ(math.pi / 4.0);
     try testing.expect(checkPointsEqNoOrder(torus.points, expected_points, 1e-7));
 }
 
-test "Rotating points in y-z" {
+test "Rotating points about x" {
     const test_alloc = testing.allocator;
     var torus: Torus = try Torus.init(test_alloc);
     defer torus.deinit();
@@ -381,7 +410,7 @@ test "Rotating points in y-z" {
     try torus.createPoints(10, 4, 1, 1);
     try testing.expectEqual(4, torus.points.len);
     // Rotate the four points
-    torus.rotateYZ(math.pi / 2.0);
+    torus.rotateAboutX(math.pi / 2.0);
     // Create an expected points list
     var expected_points = std.MultiArrayList(Point).empty;
     defer expected_points.deinit(test_alloc);
@@ -400,29 +429,31 @@ test "Setting window size" {
     var torus = try Torus.init(testing.allocator);
     defer torus.deinit();
 
-    torus.setWindowSize(5.0);
+    torus.setWindowSize(5.0, 6.0);
 
-    try testing.expectEqual(5.0, torus.window_size);
+    try testing.expectEqual(5.0, torus.window_size_horizontal);
+    try testing.expectEqual(6.0, torus.window_size_vertical);
 }
 
 test "Setting window cells" {
     var torus = try Torus.init(testing.allocator);
     defer torus.deinit();
 
-    torus.setWindowSize(5.0);
-    try torus.setWindowCells(10);
+    torus.setWindowSize(5.0, 5.0);
+    try torus.setWindowCells(20, 10);
 
-    try testing.expectEqual(10, torus.window_cells);
-    try testing.expectEqual(100, torus.window_z.len);
-    try testing.expectEqual(100, torus.window_chars.len);
+    try testing.expectEqual(20, torus.window_cells_horizontal);
+    try testing.expectEqual(10, torus.window_cells_vertical);
+    try testing.expectEqual(200, torus.window_z.len);
+    try testing.expectEqual(200, torus.window_chars.len);
 }
 
 test "Finding z-coordinates" {
     var torus = try Torus.init(testing.allocator);
     defer torus.deinit();
 
-    torus.setWindowSize(20.0);
-    try torus.setWindowCells(10);
+    torus.setWindowSize(20.0, 20.0);
+    try torus.setWindowCells(20, 10);
 
     try torus.createPoints(5.0, 10, 1.0, 5);
 
@@ -433,13 +464,13 @@ test "Finding ascii representation" {
     var torus = try Torus.init(testing.allocator);
     defer torus.deinit();
 
-    torus.setWindowSize(20.0);
-    try torus.setWindowCells(10);
+    torus.setWindowSize(20.0, 20.0);
+    try torus.setWindowCells(20, 10);
 
     try torus.createPoints(5.0, 10, 1.0, 5);
 
     torus.calculateCellZ();
-    torus.findChars();
+    torus.calculateCellChars();
 }
 
 test "Get line of chars" {
@@ -447,16 +478,16 @@ test "Get line of chars" {
     var torus = try Torus.init(testing.allocator);
     defer torus.deinit();
 
-    torus.setWindowSize(20.0);
-    try torus.setWindowCells(10);
+    torus.setWindowSize(20.0, 20.0);
+    try torus.setWindowCells(20, 10);
 
     try torus.createPoints(5.0, 10, 1.0, 5);
 
     torus.calculateCellZ();
-    torus.findChars();
+    torus.calculateCellChars();
 
     const line = torus.getLine(5);
-    try testing.expectEqual(10, line.len);
+    try testing.expectEqual(20, line.len);
     for (line) |c| {
         switch (c) {
             '.', ';', '"', '?', '[', '1', 'w', '&', 'Q', '@', ' ' => {},
