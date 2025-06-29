@@ -1,6 +1,6 @@
 # ZIGonut
 
-[![asciicast](https://asciinema.org/a/uJKT3Pfftig002yJAXeGYM8Jo.svg)](https://asciinema.org/a/uJKT3Pfftig002yJAXeGYM8Jo)
+[![See it in action!](https://asciinema.org/a/uJKT3Pfftig002yJAXeGYM8Jo.svg)](https://asciinema.org/a/uJKT3Pfftig002yJAXeGYM8Jo)
 
 Is it the everything bagel? Homer Simpson's dream? A point cloud generated from
 the equation of a torus and rasterized to an ascii representation?
