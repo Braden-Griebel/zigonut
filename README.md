@@ -16,11 +16,12 @@ Zignout creates a point cloud representing a torus using the equations:
 - $y(\theta, \phi) = (R+r \sin \theta) \sin \phi$
 - $z(\theta, \phi) = r \cos \theta$
 
-This point clous is then rotated about each axis ($x$,$y$, and $z$) using a two
+This point cloud is then rotated about each axis ($x$,$y$, and $z$) using a two
 dimensional rotation matrix, e.g.
 
-$ \begin{bmatrix} \cos \theta & - \sin \theta \\\ \sin \theta & \cos \theta
-\end{bmatrix}$
+```math
+\begin{bmatrix} \cos \theta & - \sin \theta \\ \sin \theta & \cos \theta \end{bmatrix}
+```
 
 The torus is then rasterized by steping through each point in the cloud, and
 finding the nearest z-coordinate in each patch that will be represented by a
