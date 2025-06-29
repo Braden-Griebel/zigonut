@@ -219,7 +219,18 @@ pub const Torus = struct {
         // Create an array of characters to use for drawing
         // These should get brighter as they go farther forward
         const chars = [_]u8{
-            '.', '-', '"', '|', '(', '1', 'W', '&', 'Q', '@',
+            '.',
+            '"',
+            '+',
+            '=',
+            '*',
+            'i',
+            'l',
+            'a',
+            'p',
+            'b',
+            '&',
+            '@',
         };
         // Discretize the z-dimension
         // Find the total range that z can take
@@ -490,7 +501,7 @@ test "Get line of chars" {
     try testing.expectEqual(20, line.len);
     for (line) |c| {
         switch (c) {
-            '.', ';', '"', '?', '[', '1', 'w', '&', 'Q', '@', ' ' => {},
+            '.', '-', '`', ';', '!', '"', '+', '(', ')', '=', 'v', 'L', '*', '?', '[', 'T', 'n', 'i', '}', '{', '7', 'l', 'j', '1', 'a', 'V', '2', 'P', '6', 'f', 'w', 'E', 'p', 'b', 'A', 'q', '#', '&', '%', 'Q', 'M', 'B', '@', '$', ' ' => {},
             else => {
                 @panic("Invalid character found in Torus line");
             },

@@ -6,6 +6,9 @@ const os = std.os;
 const testing = std.testing;
 const posix = std.posix;
 
+// External Imports
+const clap = @import("clap");
+
 // Local Imports
 const zigonut = @import("zigonut");
 const term = zigonut.term;
@@ -13,7 +16,8 @@ const donut = zigonut.donut;
 
 // Global Constant Definitions
 // The amount of time between each step (in ms)
-const delta_time = 100.0;
+const delta_time = 10.0;
+const steps_per_second = 1000 / delta_time;
 // The maximum number of frames to render per second
 const max_frames = 30;
 const min_millis_per_frame = 1000 / max_frames;
@@ -25,27 +29,90 @@ const min_horizontal_padding = 0;
 // vertical cells, not the actual values
 const torus_window_cells_horizontal_ratio = 3;
 const torus_window_cells_vertical_ratio = 1;
-// Number of steps of rotation about the z axis to define the torus
-const torus_major_steps = 50;
-// Number of steps around the "tube" of the torus
-const torus_minor_steps = 20;
-// Define the speed of rotation
-const torus_z_angle_step = (2 * math.pi) / 50.0;
-const torus_x_angle_step = (2 * math.pi) / 25.0;
-const torus_y_angle_step = (2 * math.pi) / 50.0;
 
 // Global Variable Definitions
 // The time the previous frame was created, used for delta time
 var prev_time: i64 = undefined;
 // Variables defining the Torus
-var torus_major_radius: f64 = 20.0;
-var torus_minor_radius: f64 = 5.0;
-var torus_window_size_horizontal: f64 = 200.0;
-var torus_window_size_vertical: f64 = 100.0;
+var torus_major_radius: f64 = 60.0;
+var torus_minor_radius: f64 = 30.0;
+var torus_window_size_horizontal: f64 = 250.0;
+var torus_window_size_vertical: f64 = 250.0;
 // The calculated window size in cells for the torus
 var torus_window_cells: TorusSizeCells = undefined;
+// Define the speed of rotation
+var torus_z_angle_step: f64 = 1.0 / steps_per_second;
+var torus_x_angle_step: f64 = 1.0 / steps_per_second;
+var torus_y_angle_step: f64 = 1.0 / steps_per_second;
+// Number of steps of rotation about the z axis to define the torus
+var torus_major_steps: usize = 500;
+// Number of steps around the "tube" of the torus
+var torus_minor_steps: usize = 100;
 
 pub fn main() !void {
+    // Get an allocator for this program
+    // Allocates the Torus (points etc.), and the cli args
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    defer _ = gpa.deinit();
+
+    // Handle the CLI arguments
+    const cli_params = comptime clap.parseParamsComptime(
+        \\-h, --help                       Display this help and exit.
+        \\-m, --major_radius <f64>         Set the major radius of the torus
+        \\-n, --minor_radius <f64>         Set the minor radius of the torus
+        \\-s, --major_steps <usize>        Set the number of slices used to generate the torus
+        \\-t, --minor_steps <usize>        Set the number of points around each slice used to generate the torus
+        \\-x, --x_rotation <f64>           Set the rotation about the x-axis (in radians per second)
+        \\-y, --y_rotation <f64>           Set the rotation about the y-axis (in radians per second)
+        \\-z, --z_rotation <f64>           Set the roration about the z-axis (in radians per second) 
+        \\-o, --horizontal_size <f64>      Set the horizontal size of the torus window (arbitrary units, ratio to major/minor radius determines the representation)
+        \\-v, --vertical_size <f64>        Set the vertical size of the torus window (arbitrary units, ratio to major/minor axis determines the representation)   
+    );
+
+    var diag = clap.Diagnostic{};
+    var cli_res = clap.parse(clap.Help, &cli_params, clap.parsers.default, .{
+        .diagnostic = &diag,
+        .allocator = gpa.allocator(),
+    }) catch |err| {
+        // Report useful error and exit.
+        diag.report(std.io.getStdErr().writer(), err) catch {};
+        return err;
+    };
+    defer cli_res.deinit();
+
+    if (cli_res.args.help != 0)
+        return clap.help(std.io.getStdErr().writer(), clap.Help, &cli_params, .{});
+    if (cli_res.args.major_radius) |major_rad| {
+        torus_major_radius = major_rad;
+    }
+    if (cli_res.args.major_steps) |maj_step| {
+        torus_major_steps = maj_step;
+    }
+    if (cli_res.args.minor_steps) |min_step| {
+        torus_minor_steps = min_step;
+    }
+    if (cli_res.args.minor_radius) |minor_rad| {
+        torus_minor_radius = minor_rad;
+    }
+    if (cli_res.args.x_rotation) |x_rot| {
+        // x_rot is radians per second, need to convert it to
+        // radians per step
+        torus_x_angle_step = x_rot / steps_per_second;
+    }
+    if (cli_res.args.y_rotation) |y_rot| {
+        torus_y_angle_step = y_rot / steps_per_second;
+    }
+    if (cli_res.args.z_rotation) |z_rot| {
+        torus_z_angle_step = z_rot / steps_per_second;
+    }
+    if (cli_res.args.horizontal_size) |h| {
+        torus_window_size_horizontal = h;
+    }
+    if (cli_res.args.vertical_size) |v| {
+        torus_window_size_vertical = v;
+    }
+
     // Get the tty
     term.tty = try fs.cwd().openFile("/dev/tty", .{ .mode = .read_write });
     defer term.tty.close();
@@ -67,9 +134,6 @@ pub fn main() !void {
     }, null);
 
     // Create the torus
-    // get an allocator for the torus
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
     // Initialize the torus with this allocator
     var torus = try donut.Torus.init(allocator);
     defer torus.deinit();
@@ -82,7 +146,7 @@ pub fn main() !void {
     prev_time = std.time.milliTimestamp();
     // Render loop
     while (true) {
-        try renderTorus(&torus);
+        renderTorus(&torus) catch {};
         // Handle user input (basically only care to quit)
         var buffer: [1]u8 = undefined;
         _ = try term.tty.read(&buffer);
@@ -170,8 +234,14 @@ fn renderTorus(torus: *donut.Torus) !void {
     if ((torus_window_cells.window_horizontal_cells == 0) or (torus_window_cells.window_vertical_cells == 0)) {
         return;
     }
+    // Find the start and end portions of the term
+    const term_window_start = torus_window_cells.term_padding.top;
+    const term_window_end = ((term.size.height - torus_window_cells.term_padding.bottom));
+    if (term_window_end - term_window_start != torus.window_cells_vertical) {
+        return; // Transitory error caused by resize, just recalulate and rerender
+    }
 
-    for (torus_window_cells.term_padding.top..((term.size.height - torus_window_cells.term_padding.bottom)), 0..torus.window_cells_vertical) |
+    for (term_window_start..term_window_end, 0..torus.window_cells_vertical) |
         term_row,
         torus_row,
     | {
