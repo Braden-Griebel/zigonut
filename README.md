@@ -19,7 +19,8 @@ Zignout creates a point cloud representing a torus using the equations:
 This point clous is then rotated about each axis ($x$,$y$, and $z$) using a two
 dimensional rotation matrix, e.g.
 
-$\begin{bmatrix} \cos \theta & - \sin \theta \\ \sin \theta & \cos \theta  \end{bmatrix}$
+$ \begin{bmatrix} \cos \theta & - \sin \theta \\\ \sin \theta & \cos \theta
+\end{bmatrix}$
 
 The torus is then rasterized by steping through each point in the cloud, and
 finding the nearest z-coordinate in each patch that will be represented by a
