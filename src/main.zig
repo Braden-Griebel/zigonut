@@ -118,7 +118,8 @@ pub fn main() !void {
     defer term.tty.close();
 
     // Get the writer
-    var stdout_writer = term.tty.writer(&.{}); // Currently unbuffered
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = term.tty.writer(&stdout_buffer); // Currently unbuffered
     const stdout = &stdout_writer.interface;
 
     // Enter raw mode
@@ -156,7 +157,7 @@ pub fn main() !void {
         _ = try term.tty.read(&buffer);
 
         // Handle the q button press
-        if (buffer[0] == 'q') {
+        if (buffer[0] == 'q' or buffer[0] == 'c' or buffer[0] == 'x') {
             return;
         }
     }

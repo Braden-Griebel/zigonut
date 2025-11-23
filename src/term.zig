@@ -20,6 +20,7 @@ pub fn writeLine(stdout: *std.Io.Writer, txt: []const u8, y: usize, width: usize
     try moveCursor(stdout, y, 0);
     try stdout.writeAll(txt);
     try stdout.splatByteAll(' ', width - txt.len);
+    try stdout.flush();
 }
 
 pub fn writeLinePadded(stdout: *std.Io.Writer, txt: []const u8, y: usize, left_pad: usize, right_pad: usize) !void {
@@ -27,6 +28,7 @@ pub fn writeLinePadded(stdout: *std.Io.Writer, txt: []const u8, y: usize, left_p
     try stdout.splatByteAll(' ', left_pad);
     try stdout.writeAll(txt);
     try stdout.splatByteAll(' ', right_pad);
+    try stdout.flush();
 }
 
 pub fn enterRaw(stdout: *std.Io.Writer) !void {
@@ -38,22 +40,12 @@ pub fn enterRaw(stdout: *std.Io.Writer) !void {
     raw.lflag.ICANON = false;
     raw.lflag.ISIG = false;
     raw.lflag.IEXTEN = false;
-    // raw.lflag &= ~@as(
-    //     posix.tcflag_t,
-    //     posix.ECHO | posix.ICANON | posix.ISIG | posix.IEXTEN,
-    // );
     raw.iflag.IXON = false;
     raw.iflag.ICRNL = false;
     raw.iflag.BRKINT = false;
     raw.iflag.INPCK = false;
     raw.iflag.ISTRIP = false;
-    // raw.iflag &= ~@as(
-    //     posix.tcflag_t,
-    //     posix.IXON | posix.ICRNL | posix.BRKINT | posix.INPCK | posix.ISTRIP,
-    // );
     raw.oflag.OPOST = false;
-    // raw.oflag &= ~@as(posix.tcflag_t, posix.OPOST);
-    // raw.cflag |= posix.CS8;
     raw.cc[@intFromEnum(posix.V.TIME)] = 0;
     raw.cc[@intFromEnum(posix.V.MIN)] = 0;
     try posix.tcsetattr(tty.handle, .FLUSH, raw);
@@ -73,38 +65,46 @@ pub fn exitRaw(stdout: *std.Io.Writer) !void {
 
 pub fn moveCursor(stdout: *std.Io.Writer, row: usize, col: usize) !void {
     _ = try stdout.print("\x1B[{};{}H", .{ row + 1, col + 1 });
+    try stdout.flush();
 }
 
 pub fn enterAlt(stdout: *std.Io.Writer) !void {
     try stdout.writeAll("\x1B[s"); // Save cursor position.
     try stdout.writeAll("\x1B[?47h"); // Save screen.
     try stdout.writeAll("\x1B[?1049h"); // Enable alternative buffer.
+    try stdout.flush();
 }
 
 pub fn leaveAlt(stdout: *std.Io.Writer) !void {
     try stdout.writeAll("\x1B[?1049l"); // Disable alternative buffer.
     try stdout.writeAll("\x1B[?47l"); // Restore screen.
     try stdout.writeAll("\x1B[u"); // Restore cursor position.
+    try stdout.flush();
 }
 
 pub fn hideCursor(stdout: *std.Io.Writer) !void {
     try stdout.writeAll("\x1B[?25l");
+    try stdout.flush();
 }
 
 pub fn showCursor(stdout: *std.Io.Writer) !void {
     try stdout.writeAll("\x1B[?25h");
+    try stdout.flush();
 }
 
 pub fn attributeReset(stdout: *std.Io.Writer) !void {
     try stdout.writeAll("\x1B[0m");
+    try stdout.flush();
 }
 
 pub fn blueBackground(stdout: *std.Io.Writer) !void {
     try stdout.writeAll("\x1B[44m");
+    try stdout.flush();
 }
 
 pub fn clear(stdout: *std.Io.Writer) !void {
     try stdout.writeAll("\x1B[2J");
+    try stdout.flush();
 }
 
 pub fn getSize() !Size {
