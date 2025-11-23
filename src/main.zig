@@ -51,10 +51,10 @@ var torus_minor_steps: usize = 100;
 
 pub fn main() !void {
     // Get an allocator for this program
-    // Allocates the Torus (points etc.), and the cli args
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    const allocator = arena.allocator();
 
     // Handle the CLI arguments
     const cli_params = comptime clap.parseParamsComptime(
@@ -65,24 +65,24 @@ pub fn main() !void {
         \\-t, --minor_steps <usize>        Set the number of points around each slice used to generate the torus
         \\-x, --x_rotation <f64>           Set the rotation about the x-axis (in radians per second)
         \\-y, --y_rotation <f64>           Set the rotation about the y-axis (in radians per second)
-        \\-z, --z_rotation <f64>           Set the roration about the z-axis (in radians per second) 
+        \\-z, --z_rotation <f64>           Set the roration about the z-axis (in radians per second)
         \\-o, --horizontal_size <f64>      Set the horizontal size of the torus window (arbitrary units, ratio to major/minor radius determines the representation)
-        \\-v, --vertical_size <f64>        Set the vertical size of the torus window (arbitrary units, ratio to major/minor axis determines the representation)   
+        \\-v, --vertical_size <f64>        Set the vertical size of the torus window (arbitrary units, ratio to major/minor axis determines the representation)
     );
 
     var diag = clap.Diagnostic{};
     var cli_res = clap.parse(clap.Help, &cli_params, clap.parsers.default, .{
         .diagnostic = &diag,
-        .allocator = gpa.allocator(),
+        .allocator = arena.allocator(),
     }) catch |err| {
         // Report useful error and exit.
-        diag.report(std.io.getStdErr().writer(), err) catch {};
+        diag.reportToFile(.stderr(), err) catch {};
         return err;
     };
     defer cli_res.deinit();
 
     if (cli_res.args.help != 0)
-        return clap.help(std.io.getStdErr().writer(), clap.Help, &cli_params, .{});
+        return clap.helpToFile(.stderr(), clap.Help, &cli_params, .{});
     if (cli_res.args.major_radius) |major_rad| {
         torus_major_radius = major_rad;
     }
@@ -114,12 +114,16 @@ pub fn main() !void {
     }
 
     // Get the tty
-    term.tty = try fs.cwd().openFile("/dev/tty", .{ .mode = .read_write });
+    term.tty = std.fs.File.stdout();
     defer term.tty.close();
 
+    // Get the writer
+    var stdout_writer = term.tty.writer(&.{}); // Currently unbuffered
+    const stdout = &stdout_writer.interface;
+
     // Enter raw mode
-    try term.enterRaw();
-    defer term.exitRaw() catch {};
+    try term.enterRaw(stdout);
+    defer term.exitRaw(stdout) catch {};
 
     // Get the size of the terminal
     term.size = try term.getSize();
@@ -146,7 +150,7 @@ pub fn main() !void {
     prev_time = std.time.milliTimestamp();
     // Render loop
     while (true) {
-        renderTorus(&torus) catch {};
+        renderTorus(stdout, &torus) catch {};
         // Handle user input (basically only care to quit)
         var buffer: [1]u8 = undefined;
         _ = try term.tty.read(&buffer);
@@ -213,13 +217,11 @@ const TorusSizeCells = struct {
 };
 
 /// Render the Torus (includes stepping the torus before rendering)
-fn renderTorus(torus: *donut.Torus) !void {
+fn renderTorus(stdout: *std.Io.Writer, torus: *donut.Torus) !void {
     // Set a maximum frame limit
     if (std.time.milliTimestamp() - prev_time < min_millis_per_frame) {
         return;
     }
-
-    const writer = term.tty.writer();
 
     // Start by updating the window size
     torus_window_cells.update();
@@ -229,7 +231,7 @@ fn renderTorus(torus: *donut.Torus) !void {
     // Step the torus
     stepTorus(torus);
     // Clear the screen
-    try term.clear(writer);
+    try term.clear(stdout);
     // If the window is too small (i.e. the window size is 0), skip trying to render
     if ((torus_window_cells.window_horizontal_cells == 0) or (torus_window_cells.window_vertical_cells == 0)) {
         return;
@@ -246,7 +248,7 @@ fn renderTorus(torus: *donut.Torus) !void {
         torus_row,
     | {
         // Write a padded line
-        try term.writeLinePadded(writer, torus.getLine(torus_row), term_row, torus_window_cells.term_padding.left, torus_window_cells.term_padding.right);
+        try term.writeLinePadded(stdout, torus.getLine(torus_row), term_row, torus_window_cells.term_padding.left, torus_window_cells.term_padding.right);
     }
     return;
 }
@@ -270,6 +272,6 @@ fn stepTorus(torus: *donut.Torus) void {
     torus.calculateCellChars();
 }
 
-fn handleSigWinch(_: c_int) callconv(.C) void {
+fn handleSigWinch(_: c_int) callconv(.c) void {
     term.size = term.getSize() catch return;
 }
